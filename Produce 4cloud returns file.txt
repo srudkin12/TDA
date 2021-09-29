@@ -1,0 +1,96 @@
+#########################################################################################################################
+# This code is designed to produce the four market cloud for the paper "Uncertainty, volatility and the persistence norms of financial time series"			#
+# Prior to running the code please make sure that you have the listed packages installed and available to your R installation. Also prepare the working directory.	#
+#																				#
+# If you make use of the code then please do not forget to cite the paper to which this code relates								#
+#																				#
+# Suggested citation: Rudkin, S., Qiu, W., and Dlotko, P. (2021) "Uncertainty, volatility and the persistence norms of financial time series", working paper 		#
+#########################################################################################################################
+
+##############
+# Load packages #
+##############
+
+library(fda.usc)
+library(quantmod)
+library(tseries)
+library(xts)
+library(readstata13)
+
+
+getSymbols("^GSPC", from="1927-12-30") #### SP 500 from outset
+getSymbols("^DJI", from="1992-01-02") #### Dow Jones Industrial Average
+getSymbols("^IXIC", from="1971-02-05") #### NASDAQ
+getSymbols("^RUT", from="1987-09-10") #### Russell 2000
+
+### Keep adjusted prices
+
+s01 <- Ad(GSPC)
+s02 <- Ad(DJI)
+s03 <- Ad(IXIC)
+s04 <- Ad(RUT)
+
+### Create log returns
+
+s01.lr = Delt(s01, type="log")[-1]
+s02.lr = Delt(s02, type="log")[-1]
+s03.lr = Delt(s03, type="log")[-1]
+s04.lr = Delt(s04, type="log")[-1]
+
+### Check numeric
+
+s01.lr.n <- as.numeric(s01.lr)
+s02.lr.n <- as.numeric(s02.lr)
+s03.lr.n <- as.numeric(s03.lr)
+s04.lr.n <- as.numeric(s04.lr)
+
+### Collect index (date)
+
+dt01 <- index(s01)
+dt02 <- index(s02)
+dt03 <- index(s03)
+dt04 <- index(s04)
+
+### Drop first line of index to match returns
+
+dt01 <- dt01[-1]
+dt02 <- dt02[-1]
+dt03 <- dt03[-1]
+dt04 <- dt04[-1]
+
+### Bind in to make data frame
+
+a001<-as.data.frame(cbind.data.frame(dt01,s01.lr.n))
+a002<-as.data.frame(cbind.data.frame(dt02,s02.lr.n))
+a003<-as.data.frame(cbind.data.frame(dt03,s03.lr.n))
+a004<-as.data.frame(cbind.data.frame(dt04,s04.lr.n))
+
+### Name the series
+
+names(a001)<-c("dt","sp500")
+names(a002)<-c("dt","djia")
+names(a003)<-c("dt","nasd")
+names(a004)<-c("dt","rut")
+
+### Multiply returns by 100
+
+a001$sp500<-a001$sp500*100
+a002$djia<-a002$djia*100
+a003$nasd<-a003$nasd*100
+a004$rut<-a004$rut*100
+
+### Merge
+
+cl4<-merge(a001,a002,by="dt")
+cl4<-merge(cl4,a003,by="dt")
+cl4<-merge(cl4,a004,by="dt")
+
+### Output file to R directory
+
+save.dta13(cl4, "cloud4.dta") ### We find .dta preserves data best. You may choose to use a different format
+
+#########################################################################################################################
+# If you make use of this code then please do not forget to cite the related paper											#
+#																				#
+# Suggested citation: Rudkin, S., Qiu, W., and Dlotko, P. (2021) "Uncertainty, volatility and the persistence norms of financial time series", working paper 		#
+#########################################################################################################################

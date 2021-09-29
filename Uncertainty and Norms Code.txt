@@ -1,0 +1,2689 @@
+#########################################################################################################################
+# This code is designed to produce all of the elements of the paper "Uncertainty, volatility and the persistence norms of financial time series"			#
+# Prior to running the code please make sure that you have the listed packages installed and available to your R installation. Also prepare the working directory.	#
+#																				#
+# If you make use of the code then please do not forget to cite the paper to which this code relates								#
+#																				#
+# Suggested citation: Rudkin, S., Qiu, W., and Dlotko, P. (2021) "Uncertainty, volatility and the persistence norms of financial time series", working paper 		#
+#########################################################################################################################
+
+### Packages
+
+library(TDA)
+library(readstata13)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(lmtest)
+library(sandwich)
+
+maxdimension<-1
+maxscale<-200
+
+#################################################################################################################################################
+# In order to use this code you will need a file with the stock index returns from Yahoo Finance and a single csv containing the uncertainty indexes prepared according to the file "uncertaintypre.txt"  #
+#																								#
+# Please replace the file names with those that you have created. Likewise set the working directory accordingly											#
+#################################################################################################################################################
+
+### Read in uncertainty
+
+dtu<-read.table("uncertainty621.csv",sep=",",header=TRUE)
+
+### Correct format of date variable name
+
+names(dtu)<-c("dt",names(dtu)[2:19])
+
+### Read in stock data
+
+dt2<-read.dta13("cloud4.dta")
+
+### Create a variable ymo of the form 199912 to identify each month
+
+dtu$ymo<-paste0(substr(dtu$dt,1,4),substr(dtu$dt,6,7))
+dt2$ymo<-as.numeric(as.character(paste0(substr(dt2$dt06,1,4),substr(dt2$dt06,6,7))))
+
+dt2t<-as.data.frame(table(dt2$ymo)) ### Table of months
+names(dt2t)<-c("ymo","freq")
+dt2t$ymo<-as.numeric(as.character(dt2t$ymo))
+x401<-nrow(dt2t) ### Identifies number of months in the sample
+
+dcolc<-matrix(0,nrow=x401,ncol=17) ### Collection matrix for 1 month
+dcold<-matrix(0,nrow=x401,ncol=17) ### Collection matrix for 1 month
+dcole<-matrix(0,nrow=x401,ncol=17) ### Collection matrix for 1 month
+dcolf<-matrix(0,nrow=x401,ncol=17) ### Collection matrix for 1 month
+
+###################################################################################
+# This next block of code is a loop which will compute the persistence norms for the relevant number of months #
+# Please note that this loop does take time to execute and will depend on the speed of your computer               #
+# Time may be saved by not running all four cloud lengths in the same loop                                                      #
+###################################################################################
+
+for(i in 13:x401){
+   x001<-i-3
+   x002<-i-6
+   x003<-i-12
+   tempc<-subset(dt2,dt2$ymo==dt2t$ymo[i]) ### Makes 1 month subset
+   tempd<-subset(dt2,dt2$ymo<=dt2t$ymo[i])
+   tempd<-subset(tempd,tempd$ymo>dt2t$ymo[x001]) ### Makes 3 month measure
+   tempe<-subset(dt2,dt2$ymo<=dt2t$ymo[i])
+   tempe<-subset(tempe,tempe$ymo>dt2t$ymo[x002]) ### Makes 6 month measure
+   tempf<-subset(dt2,dt2$ymo<=dt2t$ymo[i])
+   tempf<-subset(tempf,tempf$ymo>dt2t$ymo[x003]) ### Makes 12 month measure
+   x005<-i
+   x<-tempc[,2:5] ### returns data is in columns 2 3 4 and 5
+   Diag <- ripsDiag(X=x, maxdimension, maxscale, library="GUDHI", printProgress=FALSE)
+   dt1<-as.data.frame(print(Diag[["diagram"]]) )
+   dt1<-dt1[2:nrow(dt1),]
+   if(nrow(dt1)>1){names(dt1)<-c("dim","b","d") ### Only runs this loop if at least one feature is identified
+   dt1$pers<-dt1$d-dt1$b ### pers is the time between birth and death of the feature
+   dt1$pers2<-dt1$pers^2 ### square for L2 norm
+   dt1<-dt1[!is.na(dt1["pers"]),]
+   dt1a<-subset(dt1,dt1$dim==0) ### Identifies the dimension 0 features
+   dt1a<-dt1a[-1] ### Drop first line because the first feature is always infinitely lived (up to the maximum scale specified at the start of the code
+   dt1b<-subset(dt1,dt1$dim==1) ### Identifies the dimension 1 features
+   dcolc[x005,3]<-dt2t$ymo[i]
+   dcolc[x005,4]<-sum(dt1a$pers) ### Total L1 norm for dimension 0
+   dcolc[x005,5]<-sqrt(sum(dt1a$pers2)) ### Total L2 norm for dimension 0
+   dcolc[x005,6]<-ifelse(nrow(dt1b)==0,0,sum(dt1b$pers)) ### L1 norm for dimension 1
+   dcolc[x005,7]<-ifelse(nrow(dt1b)==0,0,sqrt(sum(dt1b$pers2))) ### L2 norm for dimension 1
+   dcolc[x005,8]<-sd(x[,1]) ### Standard deviations for each of the four series
+   dcolc[x005,9]<-sd(x[,2])
+   dcolc[x005,10]<-sd(x[,3])
+   dcolc[x005,11]<-sd(x[,4])
+   dcolc[x005,12]<-cor(x[,1],x[,2]) ### Pairwise correlations for each possible pairing
+   dcolc[x005,13]<-cor(x[,1],x[,3])
+   dcolc[x005,14]<-cor(x[,1],x[,4])
+   dcolc[x005,15]<-cor(x[,2],x[,3])
+   dcolc[x005,16]<-cor(x[,2],x[,4])
+   dcolc[x005,17]<-cor(x[,3],x[,4])
+   dcolc[x005,1]<-mean(dcolc[x005,8:11]) # Average sd
+   dcolc[x005,2]<-mean(dcolc[x005,12:17]) # Average cor
+   }
+   x<-tempd[,2:5]
+   Diag <- ripsDiag(X=x, maxdimension, maxscale, library="GUDHI", printProgress=FALSE)
+   dt1<-as.data.frame(print(Diag[["diagram"]]) )
+   dt1<-dt1[2:nrow(dt1),]
+   if(nrow(dt1)>1){names(dt1)<-c("dim","b","d")
+   dt1$pers<-dt1$d-dt1$b
+   dt1$pers2<-dt1$pers^2
+   dt1<-dt1[!is.na(dt1["pers"]),]
+   dt1a<-subset(dt1,dt1$dim==0)
+   dt1a<-dt1a[-1]
+   dt1b<-subset(dt1,dt1$dim==1)
+   dcold[x005,3]<-dt2t$ymo[i]
+   dcold[x005,4]<-sum(dt1a$pers)
+   dcold[x005,5]<-sqrt(sum(dt1a$pers2))
+   dcold[x005,6]<-ifelse(nrow(dt1b)==0,0,sum(dt1b$pers))
+   dcold[x005,7]<-ifelse(nrow(dt1b)==0,0,sqrt(sum(dt1b$pers2)))
+   dcold[x005,8]<-sd(x[,1])
+   dcold[x005,9]<-sd(x[,2])
+   dcold[x005,10]<-sd(x[,3])
+   dcold[x005,11]<-sd(x[,4])
+   dcold[x005,12]<-cor(x[,1],x[,2])
+   dcold[x005,13]<-cor(x[,1],x[,3])
+   dcold[x005,14]<-cor(x[,1],x[,4])
+   dcold[x005,15]<-cor(x[,2],x[,3])
+   dcold[x005,16]<-cor(x[,2],x[,4])
+   dcold[x005,17]<-cor(x[,3],x[,4])
+   dcold[x005,1]<-mean(dcold[x005,8:11]) # Average sd
+   dcold[x005,2]<-mean(dcold[x005,12:17]) # Average cor
+   }
+   x<-tempe[,2:5]
+   Diag <- ripsDiag(X=x, maxdimension, maxscale, library="GUDHI", printProgress=FALSE)
+   dt1<-as.data.frame(print(Diag[["diagram"]]) )
+   dt1<-dt1[2:nrow(dt1),]
+   if(nrow(dt1)>1){names(dt1)<-c("dim","b","d")
+   dt1$pers<-dt1$d-dt1$b
+   dt1$pers2<-dt1$pers^2
+   dt1<-dt1[!is.na(dt1["pers"]),]
+   dt1a<-subset(dt1,dt1$dim==0)
+   dt1a<-dt1a[-1]
+   dt1b<-subset(dt1,dt1$dim==1)
+   dcole[x005,3]<-dt2t$ymo[i]
+   dcole[x005,4]<-sum(dt1a$pers)
+   dcole[x005,5]<-sqrt(sum(dt1a$pers2))
+   dcole[x005,6]<-ifelse(nrow(dt1b)==0,0,sum(dt1b$pers))
+   dcole[x005,7]<-ifelse(nrow(dt1b)==0,0,sqrt(sum(dt1b$pers2)))
+   dcole[x005,8]<-sd(x[,1])
+   dcole[x005,9]<-sd(x[,2])
+   dcole[x005,10]<-sd(x[,3])
+   dcole[x005,11]<-sd(x[,4])
+   dcole[x005,12]<-cor(x[,1],x[,2])
+   dcole[x005,13]<-cor(x[,1],x[,3])
+   dcole[x005,14]<-cor(x[,1],x[,4])
+   dcole[x005,15]<-cor(x[,2],x[,3])
+   dcole[x005,16]<-cor(x[,2],x[,4])
+   dcole[x005,17]<-cor(x[,3],x[,4])
+   dcole[x005,1]<-mean(dcole[x005,8:11]) # Average sd
+   dcole[x005,2]<-mean(dcole[x005,12:17]) # Average cor
+   }
+   x<-tempf[,2:5]
+   Diag <- ripsDiag(X=x, maxdimension, maxscale, library="GUDHI", printProgress=FALSE)
+   dt1<-as.data.frame(print(Diag[["diagram"]]) )
+   dt1<-dt1[2:nrow(dt1),]
+   if(nrow(dt1)>1){names(dt1)<-c("dim","b","d")
+   dt1$pers<-dt1$d-dt1$b
+   dt1$pers2<-dt1$pers^2
+   dt1<-dt1[!is.na(dt1["pers"]),]
+   dt1a<-subset(dt1,dt1$dim==0)
+   dt1a<-dt1a[-1]
+   dt1b<-subset(dt1,dt1$dim==1)
+   dcolf[x005,3]<-dt2t$ymo[i]
+   dcolf[x005,4]<-sum(dt1a$pers)
+   dcolf[x005,5]<-sqrt(sum(dt1a$pers2))
+   dcolf[x005,6]<-ifelse(nrow(dt1b)==0,0,sum(dt1b$pers))
+   dcolf[x005,7]<-ifelse(nrow(dt1b)==0,0,sqrt(sum(dt1b$pers2)))
+   dcolf[x005,8]<-sd(x[,1])
+   dcolf[x005,9]<-sd(x[,2])
+   dcolf[x005,10]<-sd(x[,3])
+   dcolf[x005,11]<-sd(x[,4])
+   dcolf[x005,12]<-cor(x[,1],x[,2])
+   dcolf[x005,13]<-cor(x[,1],x[,3])
+   dcolf[x005,14]<-cor(x[,1],x[,4])
+   dcolf[x005,15]<-cor(x[,2],x[,3])
+   dcolf[x005,16]<-cor(x[,2],x[,4])
+   dcolf[x005,17]<-cor(x[,3],x[,4])
+   dcolf[x005,1]<-mean(dcolf[x005,8:11]) # Average sd
+   dcolf[x005,2]<-mean(dcolf[x005,12:17]) # Average cor
+ }
+}
+
+### Convert collected data to data frame 
+
+dcolc<-as.data.frame(dcolc) 
+dcold<-as.data.frame(dcold)
+dcole<-as.data.frame(dcole)
+dcolf<-as.data.frame(dcolf)
+
+### Add names to dcol  dataframes ###
+
+names(dcolc)<-c("msdc","mcorc","ymo","l01c2","l02c2","l11c2","l12c2","sd1c2","sd2c2","sd3c2","sd4c2","cor11c","cor12c","cor13c","cor23c","cor24c","cor34c")
+names(dcold)<-c("msdd","mcord","ymo","l01d2","l02d2","l11d2","l12d2","sd1d2","sd2d2","sd3d2","sd4d2","cor11d","cor12d","cor13d","cor23d","cor24d","cor34d")
+names(dcole)<-c("msde","mcore","ymo","l01e2","l02e2","l11e2","l12e2","sd1e2","sd2e2","sd3e2","sd4e2","cor11e","cor12e","cor13e","cor23e","cor24e","cor34e")
+names(dcolf)<-c("msdf","mcorf","ymo","l01f2","l02f2","l11f2","l12f2","sd1f2","sd2f2","sd3f2","sd4f2","cor11f","cor12f","cor13f","cor23f","cor24f","cor34f")
+
+### Formatting of date. All set to 28th as this is the last number in every month
+
+dcolc$dt<-as.Date(paste0("28-",substr(dcolc$ymo,5,6),"-",substr(dcolc$ymo,1,4)),format="%d-%m-%Y")
+dcold$dt<-as.Date(paste0("28-",substr(dcold$ymo,5,6),"-",substr(dcold$ymo,1,4)),format="%d-%m-%Y")
+dcole$dt<-as.Date(paste0("28-",substr(dcole$ymo,5,6),"-",substr(dcole$ymo,1,4)),format="%d-%m-%Y")
+dcolf$dt<-as.Date(paste0("28-",substr(dcolf$ymo,5,6),"-",substr(dcolf$ymo,1,4)),format="%d-%m-%Y")
+
+### Remove any redundant lines from the dataframes
+
+dcolca<-subset(dcolc,dcolc$sd1c2!=0)
+dcolda<-subset(dcold,dcold$sd1d2!=0)
+dcolea<-subset(dcole,dcole$sd1e2!=0)
+dcolfa<-subset(dcolf,dcolf$sd1f2!=0)
+
+### Merge with uncertainty data
+
+dtuca<-merge(dtu,dcolca,by="ymo")
+dtuda<-merge(dtu,dcolda,by="ymo")
+dtuea<-merge(dtu,dcolea,by="ymo")
+dtufa<-merge(dtu,dcolfa,by="ymo")
+
+######################
+
+
+#######################################################
+# Next stage is correlations between measures that appear in Appendix B #
+#######################################################
+
+### First make temporary dataframes combining the same variable from four cloud lengths:
+
+dt5a<-as.data.frame(cbind.data.frame(dtuca$msdc,dtuda$msdd,dtuea$msde,dtufa$msdf))
+dt5b<-as.data.frame(cbind.data.frame(dtuca$l11c2,dtuda$l11d2,dtuea$l11e2,dtufa$l11f2))
+dt5c<-as.data.frame(cbind.data.frame(dtuca$l12c2,dtuda$l12d2,dtuea$l12e2,dtufa$l12f2))
+
+### Now produce 3 4x4 pairwise correlation matrices
+
+cormatf<-matrix(1,nrow=4,ncol=4) ### Temporary 4x4 matrix to store correlations
+
+for(i in 1:4){
+ for(j in 1:4){
+   x001<-cor(dt5a[,i],dt5a[,j]) ### Pearson correlation for below the diagonal
+   x002<-cor(dt5a[,i],dt5a[,j],method="spearman") ### Spearman rank for above the diagonal
+   cormatf[i,j]<-ifelse(i>=j,x001,x002) ### Determines which number to put into the matrix
+ }
+}
+
+for(i in 1:4){
+ for(j in 1:4){
+  cormatf[i,j]<-round(cormatf[i,j],3) ### Rounds to 3 decimal places
+ }
+}
+ 
+cormat5a<-cormatf ### Store readfy for combining later
+
+cormatf<-matrix(1,nrow=4,ncol=4)
+
+for(i in 1:4){
+ for(j in 1:4){
+   x001<-cor(dt5b[,i],dt5b[,j])
+   x002<-cor(dt5b[,i],dt5b[,j],method="spearman")
+   cormatf[i,j]<-ifelse(i>=j,x001,x002)
+ }
+}
+
+for(i in 1:4){
+ for(j in 1:4){
+  cormatf[i,j]<-round(cormatf[i,j],3)
+ }
+}
+
+cormat5b<-cormatf
+
+cormatf<-matrix(1,nrow=4,ncol=4)
+
+for(i in 1:4){
+ for(j in 1:4){
+   x001<-cor(dt5c[,i],dt5c[,j])
+   x002<-cor(dt5c[,i],dt5c[,j],method="spearman")
+   cormatf[i,j]<-ifelse(i>=j,x001,x002)
+ }
+}
+
+for(i in 1:4){
+ for(j in 1:4){
+  cormatf[i,j]<-round(cormatf[i,j],3)
+ }
+}
+
+cormat5c<-cormatf
+
+cormat5d<-cbind(cormat5a,cormat5b,cormat5c) ### Place three matrices next to each other
+
+write.table(cormat5d,"TableA2.csv",sep=",",row.names=FALSE) ### Output file into working directory for formatting
+
+#######################################################
+# cormat5d may be outputted as Table A2 of the supplementary material #
+#									#
+# Next we produce the correlation table, Table 1 of the main paper	#
+#######################################################
+
+### We combine the 6 variables for which the correlation will be constructed into a dataframe
+
+dtuca3<-as.data.frame(cbind.data.frame(dtuca$finunc1,dtuca$macunc1,dtuca$reaunc1,dtuca$msdc,dtuca$l11c2,dtuca$l12c2)) 
+
+cormatf<-matrix(1,nrow=6,ncol=6)
+
+for(i in 1:6){
+ for(j in 1:6){
+   x001<-cor(dtuca3[,i],dtuca3[,j]) ### Pearson correlation
+   x002<-cor(dtuca3[,i],dtuca3[,j],method="spearman") ### Spearman rank correlation
+   cormatf[i,j]<-ifelse(i>=j,x001,x002) ### Determines which element goes into the matrix.
+ }
+}
+
+### This loop then rounds everything to 3 decimal places
+
+for(i in 1:6){
+ for(j in 1:6){
+  cormatf[i,j]<-round(cormatf[i,j],3)
+ }
+}
+
+cormatfc<-cormatf ### Store correlation matrix for later
+
+dtuda3<-as.data.frame(cbind.data.frame(dtuda$finunc1,dtuda$macunc1,dtuda$reaunc1,dtuda$msdd,dtuda$l11d2,dtuda$l12d2))
+
+cormatf<-matrix(1,nrow=6,ncol=6)
+
+for(i in 1:6){
+ for(j in 1:6){
+   x001<-cor(dtuda3[,i],dtuda3[,j])
+   x002<-cor(dtuda3[,i],dtuda3[,j],method="spearman")
+   cormatf[i,j]<-ifelse(i>=j,x001,x002)
+ }
+}
+
+for(i in 1:6){
+ for(j in 1:6){
+  cormatf[i,j]<-round(cormatf[i,j],3)
+ }
+}
+
+cormatfd<-cormatf
+
+dtuea3<-as.data.frame(cbind.data.frame(dtuea$finunc1,dtuea$macunc1,dtuea$reaunc1,dtuea$msde,dtuea$l11e2,dtuea$l12e2))
+
+cormatf<-matrix(1,nrow=6,ncol=6)
+
+for(i in 1:6){
+ for(j in 1:6){
+   x001<-cor(dtuea3[,i],dtuea3[,j])
+   x002<-cor(dtuea3[,i],dtuea3[,j],method="spearman")
+   cormatf[i,j]<-ifelse(i>=j,x001,x002)
+ }
+}
+
+for(i in 1:6){
+ for(j in 1:6){
+  cormatf[i,j]<-round(cormatf[i,j],3)
+ }
+}
+
+cormatfe<-cormatf
+
+dtufa3<-as.data.frame(cbind.data.frame(dtufa$finunc1,dtufa$macunc1,dtufa$reaunc1,dtufa$msdf,dtufa$l11f2,dtufa$l12f2))
+
+cormatf<-matrix(1,nrow=6,ncol=6)
+
+for(i in 1:6){
+ for(j in 1:6){
+   x001<-cor(dtufa3[,i],dtufa3[,j])
+   x002<-cor(dtufa3[,i],dtufa3[,j],method="spearman")
+   cormatf[i,j]<-ifelse(i>=j,x001,x002)
+ }
+}
+
+for(i in 1:6){
+ for(j in 1:6){
+  cormatf[i,j]<-round(cormatf[i,j],3)
+ }
+}
+
+cormatff<-cormatf
+
+cm1<-cbind(cormatfc,cormatfd) ### Place 1-month and 3-month next to each other
+cm2<-cbind(cormatfe,cormatff) ### Place 6-month and 12-month results next to each other
+cm3<-rbind(cm1,cm2) ### Stack to form the basis of Table 1
+
+cm4<-rbind(cm3[4:6,],cm3[10:12,]) ### Focus only on the three rows which change with each point cloud lenght (volatility and persisistence norms) 
+
+### Blank out the empty cells
+
+cm4[1,5]<-""
+cm4[1,6]<-""
+cm4[1,11]<-""
+cm4[1,12]<-""
+cm4[2,6]<-""
+cm4[2,12]<-""
+cm4[4,5]<-""
+cm4[4,6]<-""
+cm4[4,11]<-""
+cm4[4,12]<-""
+cm4[5,6]<-""
+cm4[5,12]<-""
+
+### cm4 is Table 1 in the main paper
+
+write.table(cm4,"Table1.csv",sep=",",row.names=FALSE) ### Output file into working directory for formatting
+
+#############################################################################################
+# Figure 1 is produced using the following code. You may substitute in the names based on the different clouds and variables #
+#############################################################################################
+
+### First we normalise the variables
+
+dtuca$l11c2n<-(dtuca$l11c2-mean(dtuca$l11c2))/sd(dtuca$l11c2)
+dtuda$l11d2n<-(dtuda$l11d2-mean(dtuda$l11d2))/sd(dtuda$l11d2)
+dtuea$l11e2n<-(dtuea$l11e2-mean(dtuea$l11e2))/sd(dtuea$l11e2)
+dtufa$l11f2n<-(dtufa$l11f2-mean(dtufa$l11f2))/sd(dtufa$l11f2)
+
+dtuca$l12c2n<-(dtuca$l12c2-mean(dtuca$l12c2))/sd(dtuca$l12c2)
+dtuda$l12d2n<-(dtuda$l12d2-mean(dtuda$l12d2))/sd(dtuda$l12d2)
+dtuea$l12e2n<-(dtuea$l12e2-mean(dtuea$l12e2))/sd(dtuea$l12e2)
+dtufa$l12f2n<-(dtufa$l12f2-mean(dtufa$l12f2))/sd(dtufa$l12f2)
+
+dtuca$msdcn<-(dtuca$msdc-mean(dtuca$msdc))/sd(dtuca$msdc)
+dtuda$msddn<-(dtuda$msdd-mean(dtuda$msdd))/sd(dtuda$msdd)
+dtuea$msden<-(dtuea$msde-mean(dtuea$msde))/sd(dtuea$msde)
+dtufa$msdfn<-(dtufa$msdf-mean(dtufa$msdf))/sd(dtufa$msdf)
+
+dtuca$finunc1n<-(dtuca$finunc1-mean(dtuca$finunc1))/sd(dtuca$finunc1)
+dtuda$finunc1n<-(dtuda$finunc1-mean(dtuda$finunc1))/sd(dtuda$finunc1)
+dtuea$finunc1n<-(dtuea$finunc1-mean(dtuea$finunc1))/sd(dtuea$finunc1)
+dtufa$finunc1n<-(dtufa$finunc1-mean(dtufa$finunc1))/sd(dtufa$finunc1)
+
+dtuca$macunc1n<-(dtuca$macunc1-mean(dtuca$macunc1))/sd(dtuca$macunc1)
+dtuda$macunc1n<-(dtuda$macunc1-mean(dtuda$macunc1))/sd(dtuda$macunc1)
+dtuea$macunc1n<-(dtuea$macunc1-mean(dtuea$macunc1))/sd(dtuea$macunc1)
+dtufa$macunc1n<-(dtufa$macunc1-mean(dtufa$macunc1))/sd(dtufa$macunc1)
+
+
+#### We may now use these normalised series to plot the graphs
+
+### Panel (a) Financial Uncertainty - 3 month cloud
+
+png("dtudafinunc1l11.png",width=1200,heigh=600)
+plot(dtuda$dt.y,dtuda$msddn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value") ### Set axis with parameters in paper
+lines(dtuda$dt.y,dtuda$msddn,lwd=3) ### Plot volatility
+lines(dtuda$dt.y,dtuda$l11d2n,col="red",lwd=3) ### l11 norm
+lines(dtuda$dt.y,dtuda$finunc1n,col="blue",lwd=3) 
+leg.text=c("Volatility","L1 norm", "Financial uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+### Panel (b) Financial Uncertainty - 12 month cloud
+
+png("dtufafinunc1l11.png",width=1200,heigh=600)
+plot(dtufa$dt.y,dtufa$msdfn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value")
+lines(dtufa$dt.y,dtufa$msdfn,lwd=3)
+lines(dtufa$dt.y,dtufa$l11f2n,col="red",lwd=3)
+lines(dtufa$dt.y,dtufa$finunc1n,col="blue",lwd=3)
+leg.text=c("Volatility","L1 norm", "Financial uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+### Panel (c)
+
+png("dtudamacunc1l11.png",width=1200,heigh=600)
+plot(dtuda$dt.y,dtuda$msddn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value") ### Set axis with parameters in paper
+lines(dtuda$dt.y,dtuda$msddn,lwd=3) ### Plot volatility
+lines(dtuda$dt.y,dtuda$l11d2n,col="red",lwd=3) ### l11 norm
+lines(dtuda$dt.y,dtuda$macunc1n,col="blue",lwd=3) 
+leg.text=c("Volatility","L1 norm", "Macroeconomic uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+### Panel (d)
+
+png("dtufafinunc1l11.png",width=1200,heigh=600)
+plot(dtufa$dt.y,dtufa$msdfn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value") ### Set axis with parameters in paper
+lines(dtufa$dt.y,dtufa$msdfn,lwd=3) ### Plot volatility
+lines(dtufa$dt.y,dtufa$l11f2n,col="red",lwd=3) ### l11 norm
+lines(dtufa$dt.y,dtufa$macunc1n,col="blue",lwd=3) 
+leg.text=c("Volatility","L1 norm", "Macroeconomic uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+###################################################################
+# Figure A2 includes the same four plots plus the same 4 but with L2 norms in place of L1 	#
+#											#
+# The following code can be used for the four panels of Figure A2 not yet produced	#
+###################################################################
+
+### Panel (a) Financial Uncertainty - 3 month cloud
+
+png("dtudafinunc1l12.png",width=1200,heigh=600)
+plot(dtuda$dt.y,dtuda$msddn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value") ### Set axis with parameters in paper
+lines(dtuda$dt.y,dtuda$msddn,lwd=3) ### Plot volatility
+lines(dtuda$dt.y,dtuda$l12d2n,col="red",lwd=3) ### l12 norm
+lines(dtuda$dt.y,dtuda$finunc1n,col="blue",lwd=3) 
+leg.text=c("Volatility","L2 norm", "Financial uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+### Panel (b) Financial Uncertainty - 12 month cloud
+
+png("dtufafinunc1l12.png",width=1200,heigh=600)
+plot(dtufa$dt.y,dtufa$msdfn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value")
+lines(dtufa$dt.y,dtufa$msdfn,lwd=3)
+lines(dtufa$dt.y,dtufa$l12f2n,col="red",lwd=3)
+lines(dtufa$dt.y,dtufa$finunc1n,col="blue",lwd=3)
+leg.text=c("Volatility","L2 norm", "Financial uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+### Panel (e)
+
+png("dtudamacunc1l12.png",width=1200,heigh=600)
+plot(dtuda$dt.y,dtuda$msddn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value") ### Set axis with parameters in paper
+lines(dtuda$dt.y,dtuda$msddn,lwd=3) ### Plot volatility
+lines(dtuda$dt.y,dtuda$l12d2n,col="red",lwd=3) ### l12 norm
+lines(dtuda$dt.y,dtuda$macunc1n,col="blue",lwd=3) 
+leg.text=c("Volatility","L2 norm", "Macroeconomic uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+### Panel (f)
+
+png("dtufafinunc1l12.png",width=1200,heigh=600)
+plot(dtufa$dt.y,dtufa$msdfn,type="l",ylim=c(0,2.8),xlab="Date",ylab="Value") ### Set axis with parameters in paper
+lines(dtufa$dt.y,dtufa$msdfn,lwd=3) ### Plot volatility
+lines(dtufa$dt.y,dtufa$l12f2n,col="red",lwd=3) ### l12 norm
+lines(dtufa$dt.y,dtufa$macunc1n,col="blue",lwd=3) 
+leg.text=c("Volatility","L2 norm", "Macroeconomic uncertainty - 1 Month")
+legend("topleft",leg.text,lwd=c(3,3,3,"dotted"),col=c("black","red","blue"))
+dev.off()
+
+### Panels (c) (d) (g) and (h) are panels (a) (b) (c) and (d) from Figure 1 of the main paper
+
+#############################################################
+# Table 2 presents regressions for the L11 norms based on models 1 to 3 	#
+# Models are fitted with Newey-West adjusted standard errors			#
+# Note that the code for the table includes 0 in the cells that are blanked out in   	#
+# the main paper. It is left to the user to format the tables themselves		#
+#############################################################
+
+cf201<-coeftest(lm(l11c2~finunc1,data=dtuca),vcov=NeweyWest(lm(l11c2~finunc1,data=dtuca),lag=6)) #### Perform the regression on cloud C with just finunc1 as explanatory. This is model 1
+sm201<-summary(lm(l11c2~finunc1,data=dtuca))
+cf202<-coeftest(lm(l11d2~finunc1,data=dtuda),vcov=NeweyWest(lm(l11d2~finunc1,data=dtuda),lag=6))
+sm202<-summary(lm(l11d2~finunc1,data=dtuda))
+cf203<-coeftest(lm(l11e2~finunc1,data=dtuea),vcov=NeweyWest(lm(l11e2~finunc1,data=dtuea),lag=6))
+sm203<-summary(lm(l11e2~finunc1,data=dtuea))
+cf204<-coeftest(lm(l11f2~finunc1,data=dtufa),vcov=NeweyWest(lm(l11f2~finunc1,data=dtufa),lag=6))
+sm204<-summary(lm(l11f2~finunc1,data=dtufa))
+
+ch201<-coeftest(lm(l11c2~msdc,data=dtuca),vcov=NeweyWest(lm(l11c2~msdc,data=dtuca),lag=6)) #### Model 2 with volatility only
+so201<-summary(lm(l11c2~msdc,data=dtuca))
+ch202<-coeftest(lm(l11d2~msdd,data=dtuda),vcov=NeweyWest(lm(l11d2~msdd,data=dtuda),lag=6))
+so202<-summary(lm(l11d2~msdd,data=dtuda))
+ch203<-coeftest(lm(l11e2~msde,data=dtuea),vcov=NeweyWest(lm(l11e2~msde,data=dtuea),lag=6))
+so203<-summary(lm(l11e2~msde,data=dtuea))
+ch204<-coeftest(lm(l11f2~msdf,data=dtufa),vcov=NeweyWest(lm(l11f2~msdf,data=dtufa),lag=6))
+so204<-summary(lm(l11f2~msdf,data=dtufa))
+
+cg201<-coeftest(lm(l11c2~finunc1+msdc,data=dtuca),vcov=NeweyWest(lm(l11c2~finunc1+msdc,data=dtuca),lag=6)) ### Now perform model 3 with uncertainty and volatility as the explanatory variables
+sn201<-summary(lm(l11c2~finunc1+msdc,data=dtuca))
+cg202<-coeftest(lm(l11d2~finunc1+msdd,data=dtuda),vcov=NeweyWest(lm(l11d2~finunc1+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(l11d2~finunc1+msdd,data=dtuda))
+cg203<-coeftest(lm(l11e2~finunc1+msde,data=dtuea),vcov=NeweyWest(lm(l11e2~finunc1+msde,data=dtuea),lag=6))
+sn203<-summary(lm(l11e2~finunc1+msde,data=dtuea))
+cg204<-coeftest(lm(l11f2~finunc1+msdf,data=dtufa),vcov=NeweyWest(lm(l11f2~finunc1+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(l11f2~finunc1+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+### Place intercepts into first row
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+### coefficients 
+
+rtab201[3,1]<-round(cf201[2,1],3) ### finunc1 for model 1
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3) ### Volatility for model 2
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3) ### finunc1 for model 3
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3) ### Volatility for model 3
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+### Now add t-statistics
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+### Finally add adjusted r-squared for each model.
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201f1<-rtab201 ### store
+
+#### rtab201f  is the raw panel (a) of Table 2 from the main paper
+
+cf201<-coeftest(lm(l11c2~macunc1,data=dtuca),vcov=NeweyWest(lm(l11c2~macunc1,data=dtuca),lag=6)) #### Perform the regression on cloud C with just macunc1 as explanatory. This is model 1
+sm201<-summary(lm(l11c2~macunc1,data=dtuca))
+cf202<-coeftest(lm(l11d2~macunc1,data=dtuda),vcov=NeweyWest(lm(l11d2~macunc1,data=dtuda),lag=6))
+sm202<-summary(lm(l11d2~macunc1,data=dtuda))
+cf203<-coeftest(lm(l11e2~macunc1,data=dtuea),vcov=NeweyWest(lm(l11e2~macunc1,data=dtuea),lag=6))
+sm203<-summary(lm(l11e2~macunc1,data=dtuea))
+cf204<-coeftest(lm(l11f2~macunc1,data=dtufa),vcov=NeweyWest(lm(l11f2~macunc1,data=dtufa),lag=6))
+sm204<-summary(lm(l11f2~macunc1,data=dtufa))
+
+ch201<-coeftest(lm(l11c2~msdc,data=dtuca),vcov=NeweyWest(lm(l11c2~msdc,data=dtuca),lag=6)) #### Model 2 with volatility only
+so201<-summary(lm(l11c2~msdc,data=dtuca))
+ch202<-coeftest(lm(l11d2~msdd,data=dtuda),vcov=NeweyWest(lm(l11d2~msdd,data=dtuda),lag=6))
+so202<-summary(lm(l11d2~msdd,data=dtuda))
+ch203<-coeftest(lm(l11e2~msde,data=dtuea),vcov=NeweyWest(lm(l11e2~msde,data=dtuea),lag=6))
+so203<-summary(lm(l11e2~msde,data=dtuea))
+ch204<-coeftest(lm(l11f2~msdf,data=dtufa),vcov=NeweyWest(lm(l11f2~msdf,data=dtufa),lag=6))
+so204<-summary(lm(l11f2~msdf,data=dtufa))
+
+cg201<-coeftest(lm(l11c2~macunc1+msdc,data=dtuca),vcov=NeweyWest(lm(l11c2~macunc1+msdc,data=dtuca),lag=6)) ### Now perform model 3 with uncertainty and volatility as the explanatory variables
+sn201<-summary(lm(l11c2~macunc1+msdc,data=dtuca))
+cg202<-coeftest(lm(l11d2~macunc1+msdd,data=dtuda),vcov=NeweyWest(lm(l11d2~macunc1+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(l11d2~macunc1+msdd,data=dtuda))
+cg203<-coeftest(lm(l11e2~macunc1+msde,data=dtuea),vcov=NeweyWest(lm(l11e2~macunc1+msde,data=dtuea),lag=6))
+sn203<-summary(lm(l11e2~macunc1+msde,data=dtuea))
+cg204<-coeftest(lm(l11f2~macunc1+msdf,data=dtufa),vcov=NeweyWest(lm(l11f2~macunc1+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(l11f2~macunc1+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+### Place intercepts into first row
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+### coefficients 
+
+rtab201[3,1]<-round(cf201[2,1],3) ### macunc1 for model 1
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3) ### Volatility for model 2
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3) ### macunc1 for model 3
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3) ### Volatility for model 3
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+### Now add t-statistics
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+### macally add adjusted r-squared for each model.
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201m1<-rtab201
+
+#### rtab201m1 is the raw panel (b) of Table 2 from the main paper
+
+table2<-rbind(rtab201f1,rtab201m1)
+
+write.table(table2,"Table2.csv",sep=",",row.names=FALSE) ### Output file into working directory for formatting
+
+#############################################################
+# Next we estimate Models 4 5 and 6 with uncertainty as the dependent variable	#
+#										#
+# This will produce Table 3 of the main paper					#
+#############################################################
+
+
+cf201<-coeftest(lm(finunc1~l11c2,data=dtuca),vcov=NeweyWest(lm(finunc1~l11c2,data=dtuca),lag=6)) #### First model 4
+sm201<-summary(lm(finunc1~l11c2,data=dtuca))
+cf202<-coeftest(lm(finunc1~l11d2,data=dtuda),vcov=NeweyWest(lm(finunc1~l11d2,data=dtuda),lag=6))
+sm202<-summary(lm(finunc1~l11d2,data=dtuda))
+cf203<-coeftest(lm(finunc1~l11e2,data=dtuea),vcov=NeweyWest(lm(finunc1~l11e2,data=dtuea),lag=6))
+sm203<-summary(lm(finunc1~l11e2,data=dtuea))
+cf204<-coeftest(lm(finunc1~l11f2,data=dtufa),vcov=NeweyWest(lm(finunc1~l11f2,data=dtufa),lag=6))
+sm204<-summary(lm(finunc1~l11f2,data=dtufa))
+
+ch201<-coeftest(lm(finunc1~msdc,data=dtuca),vcov=NeweyWest(lm(finunc1~msdc,data=dtuca),lag=6)) #### Then model 5
+so201<-summary(lm(finunc1~msdc,data=dtuca))
+ch202<-coeftest(lm(finunc1~msdd,data=dtuda),vcov=NeweyWest(lm(finunc1~msdd,data=dtuda),lag=6))
+so202<-summary(lm(finunc1~msdd,data=dtuda))
+ch203<-coeftest(lm(finunc1~msde,data=dtuea),vcov=NeweyWest(lm(finunc1~msde,data=dtuea),lag=6))
+so203<-summary(lm(finunc1~msde,data=dtuea))
+ch204<-coeftest(lm(finunc1~msdf,data=dtufa),vcov=NeweyWest(lm(finunc1~msdf,data=dtufa),lag=6))
+so204<-summary(lm(finunc1~msdf,data=dtufa))
+
+cg201<-coeftest(lm(finunc1~l11c2+msdc,data=dtuca),vcov=NeweyWest(lm(finunc1~l11c2+msdc,data=dtuca),lag=6)) ### Then finally model 6
+sn201<-summary(lm(finunc1~l11c2+msdc,data=dtuca))
+cg202<-coeftest(lm(finunc1~l11d2+msdd,data=dtuda),vcov=NeweyWest(lm(finunc1~l11d2+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(finunc1~l11d2+msdd,data=dtuda))
+cg203<-coeftest(lm(finunc1~l11e2+msde,data=dtuea),vcov=NeweyWest(lm(finunc1~l11e2+msde,data=dtuea),lag=6))
+sn203<-summary(lm(finunc1~l11e2+msde,data=dtuea))
+cg204<-coeftest(lm(finunc1~l11f2+msdf,data=dtufa),vcov=NeweyWest(lm(finunc1~l11f2+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(finunc1~l11f2+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201t3f<-rtab201 ### store for later
+
+#### Now compute panel (b) with macunc1
+
+cf201<-coeftest(lm(macunc1~l11c2,data=dtuca),vcov=NeweyWest(lm(macunc1~l11c2,data=dtuca),lag=6)) #### First model 4
+sm201<-summary(lm(macunc1~l11c2,data=dtuca))
+cf202<-coeftest(lm(macunc1~l11d2,data=dtuda),vcov=NeweyWest(lm(macunc1~l11d2,data=dtuda),lag=6))
+sm202<-summary(lm(macunc1~l11d2,data=dtuda))
+cf203<-coeftest(lm(macunc1~l11e2,data=dtuea),vcov=NeweyWest(lm(macunc1~l11e2,data=dtuea),lag=6))
+sm203<-summary(lm(macunc1~l11e2,data=dtuea))
+cf204<-coeftest(lm(macunc1~l11f2,data=dtufa),vcov=NeweyWest(lm(macunc1~l11f2,data=dtufa),lag=6))
+sm204<-summary(lm(macunc1~l11f2,data=dtufa))
+
+ch201<-coeftest(lm(macunc1~msdc,data=dtuca),vcov=NeweyWest(lm(macunc1~msdc,data=dtuca),lag=6)) #### Then model 5
+so201<-summary(lm(macunc1~msdc,data=dtuca))
+ch202<-coeftest(lm(macunc1~msdd,data=dtuda),vcov=NeweyWest(lm(macunc1~msdd,data=dtuda),lag=6))
+so202<-summary(lm(macunc1~msdd,data=dtuda))
+ch203<-coeftest(lm(macunc1~msde,data=dtuea),vcov=NeweyWest(lm(macunc1~msde,data=dtuea),lag=6))
+so203<-summary(lm(macunc1~msde,data=dtuea))
+ch204<-coeftest(lm(macunc1~msdf,data=dtufa),vcov=NeweyWest(lm(macunc1~msdf,data=dtufa),lag=6))
+so204<-summary(lm(macunc1~msdf,data=dtufa))
+
+cg201<-coeftest(lm(macunc1~l11c2+msdc,data=dtuca),vcov=NeweyWest(lm(macunc1~l11c2+msdc,data=dtuca),lag=6)) ### Then macally model 6
+sn201<-summary(lm(macunc1~l11c2+msdc,data=dtuca))
+cg202<-coeftest(lm(macunc1~l11d2+msdd,data=dtuda),vcov=NeweyWest(lm(macunc1~l11d2+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(macunc1~l11d2+msdd,data=dtuda))
+cg203<-coeftest(lm(macunc1~l11e2+msde,data=dtuea),vcov=NeweyWest(lm(macunc1~l11e2+msde,data=dtuea),lag=6))
+sn203<-summary(lm(macunc1~l11e2+msde,data=dtuea))
+cg204<-coeftest(lm(macunc1~l11f2+msdf,data=dtufa),vcov=NeweyWest(lm(macunc1~l11f2+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(macunc1~l11f2+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201t3m<-rtab201 ### store for later
+
+### combine
+
+table3<-rbind(rtab201t3f,rtab201t3m)
+
+write.table(table3,"Table3.csv",sep=",",row.names=FALSE)
+
+#######################################################
+#  We then consider periods of high and low uncertainty as Appendix C	#
+#									#
+#  In order to achieve this we must first split the sample on finunc1	#
+#######################################################
+
+dtucal<-subset(dtuca,dtuca$finunc1<=quantile(dtuca$finunc1,0.5)) ### Low uncertainty at or below median
+dtudal<-subset(dtuda,dtuda$finunc1<=quantile(dtuda$finunc1,0.5))
+dtueal<-subset(dtuea,dtuea$finunc1<=quantile(dtuea$finunc1,0.5))
+dtufal<-subset(dtufa,dtufa$finunc1<=quantile(dtufa$finunc1,0.5))
+dtucah<-subset(dtuca,dtuca$finunc1>quantile(dtuca$finunc1,0.5)) ### High uncertainty above median
+dtudah<-subset(dtuda,dtuda$finunc1>quantile(dtuda$finunc1,0.5))
+dtueah<-subset(dtuea,dtuea$finunc1>quantile(dtuea$finunc1,0.5))
+dtufah<-subset(dtufa,dtufa$finunc1>quantile(dtufa$finunc1,0.5))
+
+### First look at the high uncertainty sample for Panel (a) of Table A3
+
+cf201<-coeftest(lm(finunc1~l11c2,data=dtucah),vcov=NeweyWest(lm(finunc1~l11c2,data=dtucah),lag=6)) ####
+sm201<-summary(lm(finunc1~l11c2,data=dtucah))
+cf202<-coeftest(lm(finunc1~l11d2,data=dtudah),vcov=NeweyWest(lm(finunc1~l11d2,data=dtudah),lag=6))
+sm202<-summary(lm(finunc1~l11d2,data=dtudah))
+cf203<-coeftest(lm(finunc1~l11e2,data=dtueah),vcov=NeweyWest(lm(finunc1~l11e2,data=dtueah),lag=6))
+sm203<-summary(lm(finunc1~l11e2,data=dtueah))
+cf204<-coeftest(lm(finunc1~l11f2,data=dtufah),vcov=NeweyWest(lm(finunc1~l11f2,data=dtufah),lag=6))
+sm204<-summary(lm(finunc1~l11f2,data=dtufah))
+cg201<-coeftest(lm(finunc1~l11c2+msdc,data=dtucah),vcov=NeweyWest(lm(finunc1~l11c2+msdc,data=dtucah),lag=6))
+sn201<-summary(lm(finunc1~l11c2+msdc,data=dtucah))
+cg202<-coeftest(lm(finunc1~l11d2+msdd,data=dtudah),vcov=NeweyWest(lm(finunc1~l11d2+msdd,,data=dtudah),lag=6))
+sn202<-summary(lm(finunc1~l11d2+msdd,data=dtudah))
+cg203<-coeftest(lm(finunc1~l11e2+msde,data=dtueah),vcov=NeweyWest(lm(finunc1~l11e2+msde,data=dtueah),lag=6))
+sn203<-summary(lm(finunc1~l11e2+msde,data=dtueah))
+cg204<-coeftest(lm(finunc1~l11f2+msdf,data=dtufah),vcov=NeweyWest(lm(finunc1~l11f2+msdf,data=dtufah),lag=6))
+sn204<-summary(lm(finunc1~l11f2+msdf,data=dtufah))
+ch201<-coeftest(lm(finunc1~msdc,data=dtucah),vcov=NeweyWest(lm(finunc1~msdc,data=dtucah),lag=6)) #### Standard deviation only
+so201<-summary(lm(finunc1~msdc,data=dtucah))
+ch202<-coeftest(lm(finunc1~msdd,data=dtudah),vcov=NeweyWest(lm(finunc1~msdd,data=dtudah),lag=6))
+so202<-summary(lm(finunc1~msdd,data=dtudah))
+ch203<-coeftest(lm(finunc1~msde,data=dtueah),vcov=NeweyWest(lm(finunc1~msde,data=dtueah),lag=6))
+so203<-summary(lm(finunc1~msde,data=dtueah))
+ch204<-coeftest(lm(finunc1~msdf,data=dtufah),vcov=NeweyWest(lm(finunc1~msdf,data=dtufah),lag=6))
+so204<-summary(lm(finunc1~msdf,data=dtufah))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta3f1h<-rtab201
+
+### Now we look at the lower uncertainty period
+
+cf201<-coeftest(lm(finunc1~l11c2,data=dtucal),vcov=NeweyWest(lm(finunc1~l11c2,data=dtucal),lag=6)) ####
+sm201<-summary(lm(finunc1~l11c2,data=dtucal))
+cf202<-coeftest(lm(finunc1~l11d2,data=dtudal),vcov=NeweyWest(lm(finunc1~l11d2,data=dtudal),lag=6))
+sm202<-summary(lm(finunc1~l11d2,data=dtudal))
+cf203<-coeftest(lm(finunc1~l11e2,data=dtueal),vcov=NeweyWest(lm(finunc1~l11e2,data=dtueal),lag=6))
+sm203<-summary(lm(finunc1~l11e2,data=dtueal))
+cf204<-coeftest(lm(finunc1~l11f2,data=dtufal),vcov=NeweyWest(lm(finunc1~l11f2,data=dtufal),lag=6))
+sm204<-summary(lm(finunc1~l11f2,data=dtufal))
+cg201<-coeftest(lm(finunc1~l11c2+msdc,data=dtucal),vcov=NeweyWest(lm(finunc1~l11c2+msdc,data=dtucal),lag=6))
+sn201<-summary(lm(finunc1~l11c2+msdc,data=dtucal))
+cg202<-coeftest(lm(finunc1~l11d2+msdd,data=dtudal),vcov=NeweyWest(lm(finunc1~l11d2+msdd,,data=dtudal),lag=6))
+sn202<-summary(lm(finunc1~l11d2+msdd,data=dtudal))
+cg203<-coeftest(lm(finunc1~l11e2+msde,data=dtueal),vcov=NeweyWest(lm(finunc1~l11e2+msde,data=dtueal),lag=6))
+sn203<-summary(lm(finunc1~l11e2+msde,data=dtueal))
+cg204<-coeftest(lm(finunc1~l11f2+msdf,data=dtufal),vcov=NeweyWest(lm(finunc1~l11f2+msdf,data=dtufal),lag=6))
+sn204<-summary(lm(finunc1~l11f2+msdf,data=dtufal))
+ch201<-coeftest(lm(finunc1~msdc,data=dtucal),vcov=NeweyWest(lm(finunc1~msdc,data=dtucal),lag=6)) #### Standard deviation only
+so201<-summary(lm(finunc1~msdc,data=dtucal))
+ch202<-coeftest(lm(finunc1~msdd,data=dtudal),vcov=NeweyWest(lm(finunc1~msdd,data=dtudal),lag=6))
+so202<-summary(lm(finunc1~msdd,data=dtudal))
+ch203<-coeftest(lm(finunc1~msde,data=dtueal),vcov=NeweyWest(lm(finunc1~msde,data=dtueal),lag=6))
+so203<-summary(lm(finunc1~msde,data=dtueal))
+ch204<-coeftest(lm(finunc1~msdf,data=dtufal),vcov=NeweyWest(lm(finunc1~msdf,data=dtufal),lag=6))
+so204<-summary(lm(finunc1~msdf,data=dtufal))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta3f1l<-rtab201
+
+##### Now let us perform the same code for macunc1
+
+dtucal<-subset(dtuca,dtuca$macunc1<=quantile(dtuca$macunc1,0.5))
+dtudal<-subset(dtuda,dtuda$macunc1<=quantile(dtuda$macunc1,0.5))
+dtueal<-subset(dtuea,dtuea$macunc1<=quantile(dtuea$macunc1,0.5))
+dtufal<-subset(dtufa,dtufa$macunc1<=quantile(dtufa$macunc1,0.5))
+dtucah<-subset(dtuca,dtuca$macunc1>quantile(dtuca$macunc1,0.5))
+dtudah<-subset(dtuda,dtuda$macunc1>quantile(dtuda$macunc1,0.5))
+dtueah<-subset(dtuea,dtuea$macunc1>quantile(dtuea$macunc1,0.5))
+dtufah<-subset(dtufa,dtufa$macunc1>quantile(dtufa$macunc1,0.5))
+dtucal<-subset(dtuca,dtuca$macunc1<=quantile(dtuca$macunc1,0.5)) ### Low uncertainty at or below median
+dtudal<-subset(dtuda,dtuda$macunc1<=quantile(dtuda$macunc1,0.5))
+dtueal<-subset(dtuea,dtuea$macunc1<=quantile(dtuea$macunc1,0.5))
+dtufal<-subset(dtufa,dtufa$macunc1<=quantile(dtufa$macunc1,0.5))
+dtucah<-subset(dtuca,dtuca$macunc1>quantile(dtuca$macunc1,0.5)) ### High uncertainty above median
+dtudah<-subset(dtuda,dtuda$macunc1>quantile(dtuda$macunc1,0.5))
+dtueah<-subset(dtuea,dtuea$macunc1>quantile(dtuea$macunc1,0.5))
+dtufah<-subset(dtufa,dtufa$macunc1>quantile(dtufa$macunc1,0.5))
+
+### First look at the high uncertainty sample for Panel (a) of Table A3
+
+cf201<-coeftest(lm(macunc1~l11c2,data=dtucah),vcov=NeweyWest(lm(macunc1~l11c2,data=dtucah),lag=6)) ####
+sm201<-summary(lm(macunc1~l11c2,data=dtucah))
+cf202<-coeftest(lm(macunc1~l11d2,data=dtudah),vcov=NeweyWest(lm(macunc1~l11d2,data=dtudah),lag=6))
+sm202<-summary(lm(macunc1~l11d2,data=dtudah))
+cf203<-coeftest(lm(macunc1~l11e2,data=dtueah),vcov=NeweyWest(lm(macunc1~l11e2,data=dtueah),lag=6))
+sm203<-summary(lm(macunc1~l11e2,data=dtueah))
+cf204<-coeftest(lm(macunc1~l11f2,data=dtufah),vcov=NeweyWest(lm(macunc1~l11f2,data=dtufah),lag=6))
+sm204<-summary(lm(macunc1~l11f2,data=dtufah))
+cg201<-coeftest(lm(macunc1~l11c2+msdc,data=dtucah),vcov=NeweyWest(lm(macunc1~l11c2+msdc,data=dtucah),lag=6))
+sn201<-summary(lm(macunc1~l11c2+msdc,data=dtucah))
+cg202<-coeftest(lm(macunc1~l11d2+msdd,data=dtudah),vcov=NeweyWest(lm(macunc1~l11d2+msdd,,data=dtudah),lag=6))
+sn202<-summary(lm(macunc1~l11d2+msdd,data=dtudah))
+cg203<-coeftest(lm(macunc1~l11e2+msde,data=dtueah),vcov=NeweyWest(lm(macunc1~l11e2+msde,data=dtueah),lag=6))
+sn203<-summary(lm(macunc1~l11e2+msde,data=dtueah))
+cg204<-coeftest(lm(macunc1~l11f2+msdf,data=dtufah),vcov=NeweyWest(lm(macunc1~l11f2+msdf,data=dtufah),lag=6))
+sn204<-summary(lm(macunc1~l11f2+msdf,data=dtufah))
+ch201<-coeftest(lm(macunc1~msdc,data=dtucah),vcov=NeweyWest(lm(macunc1~msdc,data=dtucah),lag=6)) #### Standard deviation only
+so201<-summary(lm(macunc1~msdc,data=dtucah))
+ch202<-coeftest(lm(macunc1~msdd,data=dtudah),vcov=NeweyWest(lm(macunc1~msdd,data=dtudah),lag=6))
+so202<-summary(lm(macunc1~msdd,data=dtudah))
+ch203<-coeftest(lm(macunc1~msde,data=dtueah),vcov=NeweyWest(lm(macunc1~msde,data=dtueah),lag=6))
+so203<-summary(lm(macunc1~msde,data=dtueah))
+ch204<-coeftest(lm(macunc1~msdf,data=dtufah),vcov=NeweyWest(lm(macunc1~msdf,data=dtufah),lag=6))
+so204<-summary(lm(macunc1~msdf,data=dtufah))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta3m1h<-rtab201
+
+### Now we look at the lower uncertainty period
+
+cf201<-coeftest(lm(macunc1~l11c2,data=dtucal),vcov=NeweyWest(lm(macunc1~l11c2,data=dtucal),lag=6)) ####
+sm201<-summary(lm(macunc1~l11c2,data=dtucal))
+cf202<-coeftest(lm(macunc1~l11d2,data=dtudal),vcov=NeweyWest(lm(macunc1~l11d2,data=dtudal),lag=6))
+sm202<-summary(lm(macunc1~l11d2,data=dtudal))
+cf203<-coeftest(lm(macunc1~l11e2,data=dtueal),vcov=NeweyWest(lm(macunc1~l11e2,data=dtueal),lag=6))
+sm203<-summary(lm(macunc1~l11e2,data=dtueal))
+cf204<-coeftest(lm(macunc1~l11f2,data=dtufal),vcov=NeweyWest(lm(macunc1~l11f2,data=dtufal),lag=6))
+sm204<-summary(lm(macunc1~l11f2,data=dtufal))
+cg201<-coeftest(lm(macunc1~l11c2+msdc,data=dtucal),vcov=NeweyWest(lm(macunc1~l11c2+msdc,data=dtucal),lag=6))
+sn201<-summary(lm(macunc1~l11c2+msdc,data=dtucal))
+cg202<-coeftest(lm(macunc1~l11d2+msdd,data=dtudal),vcov=NeweyWest(lm(macunc1~l11d2+msdd,,data=dtudal),lag=6))
+sn202<-summary(lm(macunc1~l11d2+msdd,data=dtudal))
+cg203<-coeftest(lm(macunc1~l11e2+msde,data=dtueal),vcov=NeweyWest(lm(macunc1~l11e2+msde,data=dtueal),lag=6))
+sn203<-summary(lm(macunc1~l11e2+msde,data=dtueal))
+cg204<-coeftest(lm(macunc1~l11f2+msdf,data=dtufal),vcov=NeweyWest(lm(macunc1~l11f2+msdf,data=dtufal),lag=6))
+sn204<-summary(lm(macunc1~l11f2+msdf,data=dtufal))
+ch201<-coeftest(lm(macunc1~msdc,data=dtucal),vcov=NeweyWest(lm(macunc1~msdc,data=dtucal),lag=6)) #### Standard deviation only
+so201<-summary(lm(macunc1~msdc,data=dtucal))
+ch202<-coeftest(lm(macunc1~msdd,data=dtudal),vcov=NeweyWest(lm(macunc1~msdd,data=dtudal),lag=6))
+so202<-summary(lm(macunc1~msdd,data=dtudal))
+ch203<-coeftest(lm(macunc1~msde,data=dtueal),vcov=NeweyWest(lm(macunc1~msde,data=dtueal),lag=6))
+so203<-summary(lm(macunc1~msde,data=dtueal))
+ch204<-coeftest(lm(macunc1~msdf,data=dtufal),vcov=NeweyWest(lm(macunc1~msdf,data=dtufal),lag=6))
+so204<-summary(lm(macunc1~msdf,data=dtufal))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta3m1l<-rtab201
+
+### To produce Table A3 we combine the elements
+
+tablea3<-rbind(rtab201ta3f1h,rtab201ta3f1l,rtab201ta3m1h,rtab201ta3m1l)
+
+write.table(tablea3,"TableA3.csv",sep=",",row.names=FALSE) ### outputs table into working directory
+
+###########################################################################################
+# At this point it just remains to repeat these L1 norm regressions for the L2 norm. This is Appendix D of the paper 	#
+###########################################################################################
+
+#############################################################
+# Table A4 presents regressions for the l12 norms based on models 12 to 32 	#
+# This is the analogue of Table 2 but using the L2 norm				#
+# Models are fitted with Newey-West adjusted standard errors			#
+#############################################################
+
+cf201<-coeftest(lm(l12c2~finunc1,data=dtuca),vcov=NeweyWest(lm(l12c2~finunc1,data=dtuca),lag=6)) #### Perform the regression on cloud C with just finunc1 as explanatory. This is model 1
+sm201<-summary(lm(l12c2~finunc1,data=dtuca))
+cf202<-coeftest(lm(l12d2~finunc1,data=dtuda),vcov=NeweyWest(lm(l12d2~finunc1,data=dtuda),lag=6))
+sm202<-summary(lm(l12d2~finunc1,data=dtuda))
+cf203<-coeftest(lm(l12e2~finunc1,data=dtuea),vcov=NeweyWest(lm(l12e2~finunc1,data=dtuea),lag=6))
+sm203<-summary(lm(l12e2~finunc1,data=dtuea))
+cf204<-coeftest(lm(l12f2~finunc1,data=dtufa),vcov=NeweyWest(lm(l12f2~finunc1,data=dtufa),lag=6))
+sm204<-summary(lm(l12f2~finunc1,data=dtufa))
+
+ch201<-coeftest(lm(l12c2~msdc,data=dtuca),vcov=NeweyWest(lm(l12c2~msdc,data=dtuca),lag=6)) #### Model 2 with volatility only
+so201<-summary(lm(l12c2~msdc,data=dtuca))
+ch202<-coeftest(lm(l12d2~msdd,data=dtuda),vcov=NeweyWest(lm(l12d2~msdd,data=dtuda),lag=6))
+so202<-summary(lm(l12d2~msdd,data=dtuda))
+ch203<-coeftest(lm(l12e2~msde,data=dtuea),vcov=NeweyWest(lm(l12e2~msde,data=dtuea),lag=6))
+so203<-summary(lm(l12e2~msde,data=dtuea))
+ch204<-coeftest(lm(l12f2~msdf,data=dtufa),vcov=NeweyWest(lm(l12f2~msdf,data=dtufa),lag=6))
+so204<-summary(lm(l12f2~msdf,data=dtufa))
+
+cg201<-coeftest(lm(l12c2~finunc1+msdc,data=dtuca),vcov=NeweyWest(lm(l12c2~finunc1+msdc,data=dtuca),lag=6)) ### Now perform model 3 with uncertainty and volatility as the explanatory variables
+sn201<-summary(lm(l12c2~finunc1+msdc,data=dtuca))
+cg202<-coeftest(lm(l12d2~finunc1+msdd,data=dtuda),vcov=NeweyWest(lm(l12d2~finunc1+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(l12d2~finunc1+msdd,data=dtuda))
+cg203<-coeftest(lm(l12e2~finunc1+msde,data=dtuea),vcov=NeweyWest(lm(l12e2~finunc1+msde,data=dtuea),lag=6))
+sn203<-summary(lm(l12e2~finunc1+msde,data=dtuea))
+cg204<-coeftest(lm(l12f2~finunc1+msdf,data=dtufa),vcov=NeweyWest(lm(l12f2~finunc1+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(l12f2~finunc1+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+### Place intercepts into first row
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+### coefficients 
+
+rtab201[3,1]<-round(cf201[2,1],3) ### finunc1 for model 1
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3) ### Volatility for model 2
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3) ### finunc1 for model 3
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3) ### Volatility for model 3
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+### Now add t-statistics
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+### Finally add adjusted r-squared for each model.
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta4f1<-rtab201 ### store
+
+#### rtab201f  is the raw panel (a) of Table 2 from the main paper
+
+cf201<-coeftest(lm(l12c2~macunc1,data=dtuca),vcov=NeweyWest(lm(l12c2~macunc1,data=dtuca),lag=6)) #### Perform the regression on cloud C with just macunc1 as explanatory. This is model 1
+sm201<-summary(lm(l12c2~macunc1,data=dtuca))
+cf202<-coeftest(lm(l12d2~macunc1,data=dtuda),vcov=NeweyWest(lm(l12d2~macunc1,data=dtuda),lag=6))
+sm202<-summary(lm(l12d2~macunc1,data=dtuda))
+cf203<-coeftest(lm(l12e2~macunc1,data=dtuea),vcov=NeweyWest(lm(l12e2~macunc1,data=dtuea),lag=6))
+sm203<-summary(lm(l12e2~macunc1,data=dtuea))
+cf204<-coeftest(lm(l12f2~macunc1,data=dtufa),vcov=NeweyWest(lm(l12f2~macunc1,data=dtufa),lag=6))
+sm204<-summary(lm(l12f2~macunc1,data=dtufa))
+
+ch201<-coeftest(lm(l12c2~msdc,data=dtuca),vcov=NeweyWest(lm(l12c2~msdc,data=dtuca),lag=6)) #### Model 2 with volatility only
+so201<-summary(lm(l12c2~msdc,data=dtuca))
+ch202<-coeftest(lm(l12d2~msdd,data=dtuda),vcov=NeweyWest(lm(l12d2~msdd,data=dtuda),lag=6))
+so202<-summary(lm(l12d2~msdd,data=dtuda))
+ch203<-coeftest(lm(l12e2~msde,data=dtuea),vcov=NeweyWest(lm(l12e2~msde,data=dtuea),lag=6))
+so203<-summary(lm(l12e2~msde,data=dtuea))
+ch204<-coeftest(lm(l12f2~msdf,data=dtufa),vcov=NeweyWest(lm(l12f2~msdf,data=dtufa),lag=6))
+so204<-summary(lm(l12f2~msdf,data=dtufa))
+
+cg201<-coeftest(lm(l12c2~macunc1+msdc,data=dtuca),vcov=NeweyWest(lm(l12c2~macunc1+msdc,data=dtuca),lag=6)) ### Now perform model 3 with uncertainty and volatility as the explanatory variables
+sn201<-summary(lm(l12c2~macunc1+msdc,data=dtuca))
+cg202<-coeftest(lm(l12d2~macunc1+msdd,data=dtuda),vcov=NeweyWest(lm(l12d2~macunc1+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(l12d2~macunc1+msdd,data=dtuda))
+cg203<-coeftest(lm(l12e2~macunc1+msde,data=dtuea),vcov=NeweyWest(lm(l12e2~macunc1+msde,data=dtuea),lag=6))
+sn203<-summary(lm(l12e2~macunc1+msde,data=dtuea))
+cg204<-coeftest(lm(l12f2~macunc1+msdf,data=dtufa),vcov=NeweyWest(lm(l12f2~macunc1+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(l12f2~macunc1+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+### Place intercepts into first row
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+### coefficients 
+
+rtab201[3,1]<-round(cf201[2,1],3) ### macunc1 for model 1
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3) ### Volatility for model 2
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3) ### macunc1 for model 3
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3) ### Volatility for model 3
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+### Now add t-statistics
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+### finally add adjusted r-squared for each model.
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta4m1<-rtab201
+
+#### rtab201m1 is the raw panel (b) of Table A4 from the appendix
+
+tablea4<-rbind(rtab201ta4f1,rtab201ta4m1)
+
+write.table(tablea4,"TableA4.csv",sep=",",row.names=FALSE) ### Output file into working directory for formatting
+
+###################################################################
+# Next we estimate Models 42 52 and 62 with uncertainty as the dependent variable	#
+#											#
+# This will produce Table A5 of the appendix						#
+###################################################################
+
+
+cf201<-coeftest(lm(finunc1~l12c2,data=dtuca),vcov=NeweyWest(lm(finunc1~l12c2,data=dtuca),lag=6)) #### First model 4
+sm201<-summary(lm(finunc1~l12c2,data=dtuca))
+cf202<-coeftest(lm(finunc1~l12d2,data=dtuda),vcov=NeweyWest(lm(finunc1~l12d2,data=dtuda),lag=6))
+sm202<-summary(lm(finunc1~l12d2,data=dtuda))
+cf203<-coeftest(lm(finunc1~l12e2,data=dtuea),vcov=NeweyWest(lm(finunc1~l12e2,data=dtuea),lag=6))
+sm203<-summary(lm(finunc1~l12e2,data=dtuea))
+cf204<-coeftest(lm(finunc1~l12f2,data=dtufa),vcov=NeweyWest(lm(finunc1~l12f2,data=dtufa),lag=6))
+sm204<-summary(lm(finunc1~l12f2,data=dtufa))
+
+ch201<-coeftest(lm(finunc1~msdc,data=dtuca),vcov=NeweyWest(lm(finunc1~msdc,data=dtuca),lag=6)) #### Then model 5
+so201<-summary(lm(finunc1~msdc,data=dtuca))
+ch202<-coeftest(lm(finunc1~msdd,data=dtuda),vcov=NeweyWest(lm(finunc1~msdd,data=dtuda),lag=6))
+so202<-summary(lm(finunc1~msdd,data=dtuda))
+ch203<-coeftest(lm(finunc1~msde,data=dtuea),vcov=NeweyWest(lm(finunc1~msde,data=dtuea),lag=6))
+so203<-summary(lm(finunc1~msde,data=dtuea))
+ch204<-coeftest(lm(finunc1~msdf,data=dtufa),vcov=NeweyWest(lm(finunc1~msdf,data=dtufa),lag=6))
+so204<-summary(lm(finunc1~msdf,data=dtufa))
+
+cg201<-coeftest(lm(finunc1~l12c2+msdc,data=dtuca),vcov=NeweyWest(lm(finunc1~l12c2+msdc,data=dtuca),lag=6)) ### Then finally model 6
+sn201<-summary(lm(finunc1~l12c2+msdc,data=dtuca))
+cg202<-coeftest(lm(finunc1~l12d2+msdd,data=dtuda),vcov=NeweyWest(lm(finunc1~l12d2+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(finunc1~l12d2+msdd,data=dtuda))
+cg203<-coeftest(lm(finunc1~l12e2+msde,data=dtuea),vcov=NeweyWest(lm(finunc1~l12e2+msde,data=dtuea),lag=6))
+sn203<-summary(lm(finunc1~l12e2+msde,data=dtuea))
+cg204<-coeftest(lm(finunc1~l12f2+msdf,data=dtufa),vcov=NeweyWest(lm(finunc1~l12f2+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(finunc1~l12f2+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta5f<-rtab201 ### store for later
+
+#### Now compute panel (b) with macunc1
+
+cf201<-coeftest(lm(macunc1~l12c2,data=dtuca),vcov=NeweyWest(lm(macunc1~l12c2,data=dtuca),lag=6)) #### First model 4
+sm201<-summary(lm(macunc1~l12c2,data=dtuca))
+cf202<-coeftest(lm(macunc1~l12d2,data=dtuda),vcov=NeweyWest(lm(macunc1~l12d2,data=dtuda),lag=6))
+sm202<-summary(lm(macunc1~l12d2,data=dtuda))
+cf203<-coeftest(lm(macunc1~l12e2,data=dtuea),vcov=NeweyWest(lm(macunc1~l12e2,data=dtuea),lag=6))
+sm203<-summary(lm(macunc1~l12e2,data=dtuea))
+cf204<-coeftest(lm(macunc1~l12f2,data=dtufa),vcov=NeweyWest(lm(macunc1~l12f2,data=dtufa),lag=6))
+sm204<-summary(lm(macunc1~l12f2,data=dtufa))
+
+ch201<-coeftest(lm(macunc1~msdc,data=dtuca),vcov=NeweyWest(lm(macunc1~msdc,data=dtuca),lag=6)) #### Then model 5
+so201<-summary(lm(macunc1~msdc,data=dtuca))
+ch202<-coeftest(lm(macunc1~msdd,data=dtuda),vcov=NeweyWest(lm(macunc1~msdd,data=dtuda),lag=6))
+so202<-summary(lm(macunc1~msdd,data=dtuda))
+ch203<-coeftest(lm(macunc1~msde,data=dtuea),vcov=NeweyWest(lm(macunc1~msde,data=dtuea),lag=6))
+so203<-summary(lm(macunc1~msde,data=dtuea))
+ch204<-coeftest(lm(macunc1~msdf,data=dtufa),vcov=NeweyWest(lm(macunc1~msdf,data=dtufa),lag=6))
+so204<-summary(lm(macunc1~msdf,data=dtufa))
+
+cg201<-coeftest(lm(macunc1~l12c2+msdc,data=dtuca),vcov=NeweyWest(lm(macunc1~l12c2+msdc,data=dtuca),lag=6)) ### Then macally model 6
+sn201<-summary(lm(macunc1~l12c2+msdc,data=dtuca))
+cg202<-coeftest(lm(macunc1~l12d2+msdd,data=dtuda),vcov=NeweyWest(lm(macunc1~l12d2+msdd,,data=dtuda),lag=6))
+sn202<-summary(lm(macunc1~l12d2+msdd,data=dtuda))
+cg203<-coeftest(lm(macunc1~l12e2+msde,data=dtuea),vcov=NeweyWest(lm(macunc1~l12e2+msde,data=dtuea),lag=6))
+sn203<-summary(lm(macunc1~l12e2+msde,data=dtuea))
+cg204<-coeftest(lm(macunc1~l12f2+msdf,data=dtufa),vcov=NeweyWest(lm(macunc1~l12f2+msdf,data=dtufa),lag=6))
+sn204<-summary(lm(macunc1~l12f2+msdf,data=dtufa))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta5m<-rtab201 ### store for later
+
+### combine
+
+tablea5<-rbind(rtab201ta5f,rtab201ta5m)
+
+write.table(tablea5,"TableA5.csv",sep=",",row.names=FALSE)
+
+#######################################################
+#  We then consider periods of high and low uncertainty as Appendix C	#
+#									#
+#  In order to achieve this we must first split the sample on finunc1	#
+#######################################################
+
+dtucal<-subset(dtuca,dtuca$finunc1<=quantile(dtuca$finunc1,0.5)) ### Low uncertainty at or below median
+dtudal<-subset(dtuda,dtuda$finunc1<=quantile(dtuda$finunc1,0.5))
+dtueal<-subset(dtuea,dtuea$finunc1<=quantile(dtuea$finunc1,0.5))
+dtufal<-subset(dtufa,dtufa$finunc1<=quantile(dtufa$finunc1,0.5))
+dtucah<-subset(dtuca,dtuca$finunc1>quantile(dtuca$finunc1,0.5)) ### High uncertainty above median
+dtudah<-subset(dtuda,dtuda$finunc1>quantile(dtuda$finunc1,0.5))
+dtueah<-subset(dtuea,dtuea$finunc1>quantile(dtuea$finunc1,0.5))
+dtufah<-subset(dtufa,dtufa$finunc1>quantile(dtufa$finunc1,0.5))
+
+### First look at the high uncertainty sample for Panel (a) of Table A6
+
+cf201<-coeftest(lm(finunc1~l12c2,data=dtucah),vcov=NeweyWest(lm(finunc1~l12c2,data=dtucah),lag=6)) ####
+sm201<-summary(lm(finunc1~l12c2,data=dtucah))
+cf202<-coeftest(lm(finunc1~l12d2,data=dtudah),vcov=NeweyWest(lm(finunc1~l12d2,data=dtudah),lag=6))
+sm202<-summary(lm(finunc1~l12d2,data=dtudah))
+cf203<-coeftest(lm(finunc1~l12e2,data=dtueah),vcov=NeweyWest(lm(finunc1~l12e2,data=dtueah),lag=6))
+sm203<-summary(lm(finunc1~l12e2,data=dtueah))
+cf204<-coeftest(lm(finunc1~l12f2,data=dtufah),vcov=NeweyWest(lm(finunc1~l12f2,data=dtufah),lag=6))
+sm204<-summary(lm(finunc1~l12f2,data=dtufah))
+cg201<-coeftest(lm(finunc1~l12c2+msdc,data=dtucah),vcov=NeweyWest(lm(finunc1~l12c2+msdc,data=dtucah),lag=6))
+sn201<-summary(lm(finunc1~l12c2+msdc,data=dtucah))
+cg202<-coeftest(lm(finunc1~l12d2+msdd,data=dtudah),vcov=NeweyWest(lm(finunc1~l12d2+msdd,,data=dtudah),lag=6))
+sn202<-summary(lm(finunc1~l12d2+msdd,data=dtudah))
+cg203<-coeftest(lm(finunc1~l12e2+msde,data=dtueah),vcov=NeweyWest(lm(finunc1~l12e2+msde,data=dtueah),lag=6))
+sn203<-summary(lm(finunc1~l12e2+msde,data=dtueah))
+cg204<-coeftest(lm(finunc1~l12f2+msdf,data=dtufah),vcov=NeweyWest(lm(finunc1~l12f2+msdf,data=dtufah),lag=6))
+sn204<-summary(lm(finunc1~l12f2+msdf,data=dtufah))
+ch201<-coeftest(lm(finunc1~msdc,data=dtucah),vcov=NeweyWest(lm(finunc1~msdc,data=dtucah),lag=6)) #### Standard deviation only
+so201<-summary(lm(finunc1~msdc,data=dtucah))
+ch202<-coeftest(lm(finunc1~msdd,data=dtudah),vcov=NeweyWest(lm(finunc1~msdd,data=dtudah),lag=6))
+so202<-summary(lm(finunc1~msdd,data=dtudah))
+ch203<-coeftest(lm(finunc1~msde,data=dtueah),vcov=NeweyWest(lm(finunc1~msde,data=dtueah),lag=6))
+so203<-summary(lm(finunc1~msde,data=dtueah))
+ch204<-coeftest(lm(finunc1~msdf,data=dtufah),vcov=NeweyWest(lm(finunc1~msdf,data=dtufah),lag=6))
+so204<-summary(lm(finunc1~msdf,data=dtufah))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta6f1h<-rtab201
+
+### Now we look at the lower uncertainty period
+
+cf201<-coeftest(lm(finunc1~l12c2,data=dtucal),vcov=NeweyWest(lm(finunc1~l12c2,data=dtucal),lag=6)) ####
+sm201<-summary(lm(finunc1~l12c2,data=dtucal))
+cf202<-coeftest(lm(finunc1~l12d2,data=dtudal),vcov=NeweyWest(lm(finunc1~l12d2,data=dtudal),lag=6))
+sm202<-summary(lm(finunc1~l12d2,data=dtudal))
+cf203<-coeftest(lm(finunc1~l12e2,data=dtueal),vcov=NeweyWest(lm(finunc1~l12e2,data=dtueal),lag=6))
+sm203<-summary(lm(finunc1~l12e2,data=dtueal))
+cf204<-coeftest(lm(finunc1~l12f2,data=dtufal),vcov=NeweyWest(lm(finunc1~l12f2,data=dtufal),lag=6))
+sm204<-summary(lm(finunc1~l12f2,data=dtufal))
+cg201<-coeftest(lm(finunc1~l12c2+msdc,data=dtucal),vcov=NeweyWest(lm(finunc1~l12c2+msdc,data=dtucal),lag=6))
+sn201<-summary(lm(finunc1~l12c2+msdc,data=dtucal))
+cg202<-coeftest(lm(finunc1~l12d2+msdd,data=dtudal),vcov=NeweyWest(lm(finunc1~l12d2+msdd,,data=dtudal),lag=6))
+sn202<-summary(lm(finunc1~l12d2+msdd,data=dtudal))
+cg203<-coeftest(lm(finunc1~l12e2+msde,data=dtueal),vcov=NeweyWest(lm(finunc1~l12e2+msde,data=dtueal),lag=6))
+sn203<-summary(lm(finunc1~l12e2+msde,data=dtueal))
+cg204<-coeftest(lm(finunc1~l12f2+msdf,data=dtufal),vcov=NeweyWest(lm(finunc1~l12f2+msdf,data=dtufal),lag=6))
+sn204<-summary(lm(finunc1~l12f2+msdf,data=dtufal))
+ch201<-coeftest(lm(finunc1~msdc,data=dtucal),vcov=NeweyWest(lm(finunc1~msdc,data=dtucal),lag=6)) #### Standard deviation only
+so201<-summary(lm(finunc1~msdc,data=dtucal))
+ch202<-coeftest(lm(finunc1~msdd,data=dtudal),vcov=NeweyWest(lm(finunc1~msdd,data=dtudal),lag=6))
+so202<-summary(lm(finunc1~msdd,data=dtudal))
+ch203<-coeftest(lm(finunc1~msde,data=dtueal),vcov=NeweyWest(lm(finunc1~msde,data=dtueal),lag=6))
+so203<-summary(lm(finunc1~msde,data=dtueal))
+ch204<-coeftest(lm(finunc1~msdf,data=dtufal),vcov=NeweyWest(lm(finunc1~msdf,data=dtufal),lag=6))
+so204<-summary(lm(finunc1~msdf,data=dtufal))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta6f1l<-rtab201
+
+##### Now let us perform the same code for macunc1
+
+dtucal<-subset(dtuca,dtuca$macunc1<=quantile(dtuca$macunc1,0.5))
+dtudal<-subset(dtuda,dtuda$macunc1<=quantile(dtuda$macunc1,0.5))
+dtueal<-subset(dtuea,dtuea$macunc1<=quantile(dtuea$macunc1,0.5))
+dtufal<-subset(dtufa,dtufa$macunc1<=quantile(dtufa$macunc1,0.5))
+dtucah<-subset(dtuca,dtuca$macunc1>quantile(dtuca$macunc1,0.5))
+dtudah<-subset(dtuda,dtuda$macunc1>quantile(dtuda$macunc1,0.5))
+dtueah<-subset(dtuea,dtuea$macunc1>quantile(dtuea$macunc1,0.5))
+dtufah<-subset(dtufa,dtufa$macunc1>quantile(dtufa$macunc1,0.5))
+dtucal<-subset(dtuca,dtuca$macunc1<=quantile(dtuca$macunc1,0.5)) ### Low uncertainty at or below median
+dtudal<-subset(dtuda,dtuda$macunc1<=quantile(dtuda$macunc1,0.5))
+dtueal<-subset(dtuea,dtuea$macunc1<=quantile(dtuea$macunc1,0.5))
+dtufal<-subset(dtufa,dtufa$macunc1<=quantile(dtufa$macunc1,0.5))
+dtucah<-subset(dtuca,dtuca$macunc1>quantile(dtuca$macunc1,0.5)) ### High uncertainty above median
+dtudah<-subset(dtuda,dtuda$macunc1>quantile(dtuda$macunc1,0.5))
+dtueah<-subset(dtuea,dtuea$macunc1>quantile(dtuea$macunc1,0.5))
+dtufah<-subset(dtufa,dtufa$macunc1>quantile(dtufa$macunc1,0.5))
+
+### First look at the high uncertainty sample for Panel (c) of Table A6
+
+cf201<-coeftest(lm(macunc1~l12c2,data=dtucah),vcov=NeweyWest(lm(macunc1~l12c2,data=dtucah),lag=6)) ####
+sm201<-summary(lm(macunc1~l12c2,data=dtucah))
+cf202<-coeftest(lm(macunc1~l12d2,data=dtudah),vcov=NeweyWest(lm(macunc1~l12d2,data=dtudah),lag=6))
+sm202<-summary(lm(macunc1~l12d2,data=dtudah))
+cf203<-coeftest(lm(macunc1~l12e2,data=dtueah),vcov=NeweyWest(lm(macunc1~l12e2,data=dtueah),lag=6))
+sm203<-summary(lm(macunc1~l12e2,data=dtueah))
+cf204<-coeftest(lm(macunc1~l12f2,data=dtufah),vcov=NeweyWest(lm(macunc1~l12f2,data=dtufah),lag=6))
+sm204<-summary(lm(macunc1~l12f2,data=dtufah))
+cg201<-coeftest(lm(macunc1~l12c2+msdc,data=dtucah),vcov=NeweyWest(lm(macunc1~l12c2+msdc,data=dtucah),lag=6))
+sn201<-summary(lm(macunc1~l12c2+msdc,data=dtucah))
+cg202<-coeftest(lm(macunc1~l12d2+msdd,data=dtudah),vcov=NeweyWest(lm(macunc1~l12d2+msdd,,data=dtudah),lag=6))
+sn202<-summary(lm(macunc1~l12d2+msdd,data=dtudah))
+cg203<-coeftest(lm(macunc1~l12e2+msde,data=dtueah),vcov=NeweyWest(lm(macunc1~l12e2+msde,data=dtueah),lag=6))
+sn203<-summary(lm(macunc1~l12e2+msde,data=dtueah))
+cg204<-coeftest(lm(macunc1~l12f2+msdf,data=dtufah),vcov=NeweyWest(lm(macunc1~l12f2+msdf,data=dtufah),lag=6))
+sn204<-summary(lm(macunc1~l12f2+msdf,data=dtufah))
+ch201<-coeftest(lm(macunc1~msdc,data=dtucah),vcov=NeweyWest(lm(macunc1~msdc,data=dtucah),lag=6)) #### Standard deviation only
+so201<-summary(lm(macunc1~msdc,data=dtucah))
+ch202<-coeftest(lm(macunc1~msdd,data=dtudah),vcov=NeweyWest(lm(macunc1~msdd,data=dtudah),lag=6))
+so202<-summary(lm(macunc1~msdd,data=dtudah))
+ch203<-coeftest(lm(macunc1~msde,data=dtueah),vcov=NeweyWest(lm(macunc1~msde,data=dtueah),lag=6))
+so203<-summary(lm(macunc1~msde,data=dtueah))
+ch204<-coeftest(lm(macunc1~msdf,data=dtufah),vcov=NeweyWest(lm(macunc1~msdf,data=dtufah),lag=6))
+so204<-summary(lm(macunc1~msdf,data=dtufah))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta6m1h<-rtab201
+
+### Now we look at the lower uncertainty period for panel (d) of Table A6
+
+cf201<-coeftest(lm(macunc1~l12c2,data=dtucal),vcov=NeweyWest(lm(macunc1~l12c2,data=dtucal),lag=6)) 
+sm201<-summary(lm(macunc1~l12c2,data=dtucal))
+cf202<-coeftest(lm(macunc1~l12d2,data=dtudal),vcov=NeweyWest(lm(macunc1~l12d2,data=dtudal),lag=6))
+sm202<-summary(lm(macunc1~l12d2,data=dtudal))
+cf203<-coeftest(lm(macunc1~l12e2,data=dtueal),vcov=NeweyWest(lm(macunc1~l12e2,data=dtueal),lag=6))
+sm203<-summary(lm(macunc1~l12e2,data=dtueal))
+cf204<-coeftest(lm(macunc1~l12f2,data=dtufal),vcov=NeweyWest(lm(macunc1~l12f2,data=dtufal),lag=6))
+sm204<-summary(lm(macunc1~l12f2,data=dtufal))
+cg201<-coeftest(lm(macunc1~l12c2+msdc,data=dtucal),vcov=NeweyWest(lm(macunc1~l12c2+msdc,data=dtucal),lag=6))
+sn201<-summary(lm(macunc1~l12c2+msdc,data=dtucal))
+cg202<-coeftest(lm(macunc1~l12d2+msdd,data=dtudal),vcov=NeweyWest(lm(macunc1~l12d2+msdd,,data=dtudal),lag=6))
+sn202<-summary(lm(macunc1~l12d2+msdd,data=dtudal))
+cg203<-coeftest(lm(macunc1~l12e2+msde,data=dtueal),vcov=NeweyWest(lm(macunc1~l12e2+msde,data=dtueal),lag=6))
+sn203<-summary(lm(macunc1~l12e2+msde,data=dtueal))
+cg204<-coeftest(lm(macunc1~l12f2+msdf,data=dtufal),vcov=NeweyWest(lm(macunc1~l12f2+msdf,data=dtufal),lag=6))
+sn204<-summary(lm(macunc1~l12f2+msdf,data=dtufal))
+ch201<-coeftest(lm(macunc1~msdc,data=dtucal),vcov=NeweyWest(lm(macunc1~msdc,data=dtucal),lag=6)) 
+so201<-summary(lm(macunc1~msdc,data=dtucal))
+ch202<-coeftest(lm(macunc1~msdd,data=dtudal),vcov=NeweyWest(lm(macunc1~msdd,data=dtudal),lag=6))
+so202<-summary(lm(macunc1~msdd,data=dtudal))
+ch203<-coeftest(lm(macunc1~msde,data=dtueal),vcov=NeweyWest(lm(macunc1~msde,data=dtueal),lag=6))
+so203<-summary(lm(macunc1~msde,data=dtueal))
+ch204<-coeftest(lm(macunc1~msdf,data=dtufal),vcov=NeweyWest(lm(macunc1~msdf,data=dtufal),lag=6))
+so204<-summary(lm(macunc1~msdf,data=dtufal))
+
+rtab201<-matrix(0,nrow=7,ncol=12)
+
+rtab201[1,1]<-round(cf201[1,1],3)
+rtab201[1,2]<-round(cf202[1,1],3)
+rtab201[1,3]<-round(cf203[1,1],3)
+rtab201[1,4]<-round(cf204[1,1],3)
+rtab201[1,5]<-round(ch201[1,1],3)
+rtab201[1,6]<-round(ch202[1,1],3)
+rtab201[1,7]<-round(ch203[1,1],3)
+rtab201[1,8]<-round(ch204[1,1],3)
+rtab201[1,9]<-round(cg201[1,1],3)
+rtab201[1,10]<-round(cg202[1,1],3)
+rtab201[1,11]<-round(cg203[1,1],3)
+rtab201[1,12]<-round(cg204[1,1],3)
+
+rtab201[3,1]<-round(cf201[2,1],3)
+rtab201[3,2]<-round(cf202[2,1],3)
+rtab201[3,3]<-round(cf203[2,1],3)
+rtab201[3,4]<-round(cf204[2,1],3)
+rtab201[3,9]<-round(cg201[2,1],3)
+rtab201[3,10]<-round(cg202[2,1],3)
+rtab201[3,11]<-round(cg203[2,1],3)
+rtab201[3,12]<-round(cg204[2,1],3)
+rtab201[5,5]<-round(ch201[2,1],3)
+rtab201[5,6]<-round(ch202[2,1],3)
+rtab201[5,7]<-round(ch203[2,1],3)
+rtab201[5,8]<-round(ch204[2,1],3)
+rtab201[5,9]<-round(cg201[3,1],3)
+rtab201[5,10]<-round(cg202[3,1],3)
+rtab201[5,11]<-round(cg203[3,1],3)
+rtab201[5,12]<-round(cg204[3,1],3)
+
+rtab201[2,1]<-paste0("(",round(cf201[1,3],3),")")
+rtab201[2,2]<-paste0("(",round(cf202[1,3],3),")")
+rtab201[2,3]<-paste0("(",round(cf203[1,3],3),")")
+rtab201[2,4]<-paste0("(",round(cf204[1,3],3),")")
+rtab201[2,5]<-paste0("(",round(ch201[1,3],3),")")
+rtab201[2,6]<-paste0("(",round(ch202[1,3],3),")")
+rtab201[2,7]<-paste0("(",round(ch203[1,3],3),")")
+rtab201[2,8]<-paste0("(",round(ch204[1,3],3),")")
+rtab201[2,9]<-paste0("(",round(cg201[1,3],3),")")
+rtab201[2,10]<-paste0("(",round(cg202[1,3],3),")")
+rtab201[2,11]<-paste0("(",round(cg203[1,3],3),")")
+rtab201[2,12]<-paste0("(",round(cg204[1,3],3),")")
+rtab201[4,1]<-paste0("(",round(cf201[2,3],3),")")
+rtab201[4,2]<-paste0("(",round(cf202[2,3],3),")")
+rtab201[4,3]<-paste0("(",round(cf203[2,3],3),")")
+rtab201[4,4]<-paste0("(",round(cf204[2,3],3),")")
+rtab201[4,9]<-paste0("(",round(cg201[2,3],3),")")
+rtab201[4,10]<-paste0("(",round(cg202[2,3],3),")")
+rtab201[4,11]<-paste0("(",round(cg203[2,3],3),")")
+rtab201[4,12]<-paste0("(",round(cg204[2,3],3),")")
+rtab201[6,5]<-paste0("(",round(ch201[2,3],3),")")
+rtab201[6,6]<-paste0("(",round(ch202[2,3],3),")")
+rtab201[6,7]<-paste0("(",round(ch203[2,3],3),")")
+rtab201[6,8]<-paste0("(",round(ch204[2,3],3),")")
+rtab201[6,9]<-paste0("(",round(cg201[3,3],3),")")
+rtab201[6,10]<-paste0("(",round(cg202[3,3],3),")")
+rtab201[6,11]<-paste0("(",round(cg203[3,3],3),")")
+rtab201[6,12]<-paste0("(",round(cg204[3,3],3),")")
+
+
+rtab201[7,1]<-round(sm201[[8]],3)
+rtab201[7,2]<-round(sm202[[8]],3)
+rtab201[7,3]<-round(sm203[[8]],3)
+rtab201[7,4]<-round(sm204[[8]],3)
+rtab201[7,5]<-round(so201[[8]],3)
+rtab201[7,6]<-round(so202[[8]],3)
+rtab201[7,7]<-round(so203[[8]],3)
+rtab201[7,8]<-round(so204[[8]],3)
+rtab201[7,9]<-round(sn201[[8]],3)
+rtab201[7,10]<-round(sn202[[8]],3)
+rtab201[7,11]<-round(sn203[[8]],3)
+rtab201[7,12]<-round(sn204[[8]],3)
+
+### Blank out
+
+rtab201[3,5]<-""
+rtab201[3,6]<-""
+rtab201[3,7]<-""
+rtab201[3,8]<-""
+rtab201[4,5]<-""
+rtab201[4,6]<-""
+rtab201[4,7]<-""
+rtab201[4,8]<-""
+rtab201[5,1]<-""
+rtab201[5,2]<-""
+rtab201[5,3]<-""
+rtab201[5,4]<-""
+rtab201[6,1]<-""
+rtab201[6,2]<-""
+rtab201[6,3]<-""
+rtab201[6,4]<-""
+
+rtab201ta6m1l<-rtab201
+
+### To produce Table A6 we combine the elements
+
+tablea6<-rbind(rtab201ta6f1h,rtab201ta6f1l,rtab201ta6m1h,rtab201ta6m1l)
+
+write.table(tablea6,"TableA6.csv",sep=",",row.names=FALSE) ### outputs table into working directory
+
+###################################################################################################################
+# If you have made use of all or part of this code please do not forget to cite the paper 									#
+#																			#
+# Suggested citation: Rudkin, S., Qiu, W., and Dlotko, P. (2021) "Uncertainty, volatility and the persistence norms of financial time series", working paper 	#
+###################################################################################################################
+

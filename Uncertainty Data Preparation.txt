@@ -1,0 +1,20 @@
+###################################################################################################################
+# If you have made use of all or part of this code please do not forget to cite the related paper 								#
+#																			#
+# Suggested citation: Rudkin, S., Qiu, W., and Dlotko, P. (2021) "Uncertainty, volatility and the persistence norms of financial time series", working paper 	#
+###################################################################################################################
+
+Instructions for producing uncertainty data
+
+
+1. Download uncertainty data as Excel file from https://www.sydneyludvigson.com/macro-and-financial-uncertainty-indexes (Accessed 30th September 2021)
+2. Unpack the zip file 
+3. Open the three excel files
+4. Copy the index data for both the uncertainty and the economic series into a new spreadsheet so that the first column is the date and then the next 6 columns are the financial indexes, the next 6 are the macroeconomic indices and the final 6 are the real uncertainty indexes
+5. Name the first 7 columns as follows "dt", "finunc1", "finunc3", "finunc12", "finecu1", "finecu3", "finecu12"
+6. Name the next 6 columns as follows "macunc1", "macunc3", "macunc12", "macecu1", "macecu3", "macecu12"
+7. Name the final 6 columns as follows "reaunc1", "reaunc3", "reaunc12", "reaecu1", "reaecu3", "reaecu12"
+8. Save file into your R directory for running the main code as "uncertainty621.csv"
+
+Please do not forget to cite the data source as being the website of Professsor Sydney Ludvigson
+
